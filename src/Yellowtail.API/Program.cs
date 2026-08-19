@@ -1,5 +1,11 @@
+using FluentValidation;
+using Microsoft.EntityFrameworkCore;
+using Yellowtail.API.Configuration;
+using Yellowtail.API.Middleware;
+using Yellowtail.Data;
 using Yellowtail.Data.Repositories;
-using Yellowtail.Services;
+using Yellowtail.Services.Contracts;
+using Yellowtail.Services.Implementation;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,8 +15,21 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddSingleton<IMemberRepository, InMemoryMemberRepository>();
+builder.Services.Configure<PaginationOptions>(
+    builder.Configuration.GetSection(PaginationOptions.SectionName));
+
+builder.Services.AddDbContext<YellowtailDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+
+builder.Services.AddScoped<IMemberRepository, MemberRepository>();
+builder.Services.AddScoped<ISportRepository, SportRepository>();
 builder.Services.AddScoped<IMemberService, MemberService>();
+builder.Services.AddScoped<ISportService, SportService>();
+
+builder.Services.AddValidatorsFromAssemblyContaining<Program>();
+
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
 
 var app = builder.Build();
 
@@ -20,6 +39,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseExceptionHandler();
 
 app.UseHttpsRedirection();
 

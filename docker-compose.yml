@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: yellowtail-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: yellowtail
+      POSTGRES_USER: yellowtail
+      POSTGRES_PASSWORD: yellowtail_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - yellowtail-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U yellowtail -d yellowtail"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  yellowtail-postgres-data:

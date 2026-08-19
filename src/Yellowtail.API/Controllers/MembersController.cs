@@ -1,46 +1,198 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using Yellowtail.API.Configuration;
 using Yellowtail.API.Contracts;
-using Yellowtail.Services;
+using Yellowtail.API.Validators;
+using Yellowtail.Data.Enums;
+using Yellowtail.Services.Contracts;
+using Yellowtail.Services.Models;
 
 namespace Yellowtail.API.Controllers;
 
+/// <summary>
+/// Exposes CRUD and listing endpoints for members.
+/// </summary>
 [ApiController]
 [Route("api/[controller]")]
-public class MembersController(IMemberService memberService) : ControllerBase
+public class MembersController : ControllerBase
 {
-    [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<MemberResponse>>> GetAll()
+    /// <summary>
+    /// The service used to read and persist members.
+    /// </summary>
+    private readonly IMemberService _memberService;
+
+    /// <summary>
+    /// Validates <see cref="CreateMemberRequest"/> payloads.
+    /// </summary>
+    private readonly IValidator<CreateMemberRequest> _createValidator;
+
+    /// <summary>
+    /// Validates <see cref="UpdateMemberRequest"/> payloads.
+    /// </summary>
+    private readonly IValidator<UpdateMemberRequest> _updateValidator;
+
+    /// <summary>
+    /// The configured default and maximum page sizes for the members list.
+    /// </summary>
+    private readonly PaginationOptions _paginationOptions;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="MembersController"/> class.
+    /// </summary>
+    /// <param name="memberService">The service used to read and persist members.</param>
+    /// <param name="createValidator">Validates <see cref="CreateMemberRequest"/> payloads.</param>
+    /// <param name="updateValidator">Validates <see cref="UpdateMemberRequest"/> payloads.</param>
+    /// <param name="paginationOptions">The configured default and maximum page sizes for the members list.</param>
+    public MembersController(
+        IMemberService memberService,
+        IValidator<CreateMemberRequest> createValidator,
+        IValidator<UpdateMemberRequest> updateValidator,
+        IOptions<PaginationOptions> paginationOptions)
     {
-        var members = await memberService.GetAllAsync();
-        return Ok(members.Select(MemberResponse.FromEntity));
+        _memberService = memberService;
+        _createValidator = createValidator;
+        _updateValidator = updateValidator;
+        _paginationOptions = paginationOptions.Value;
     }
 
+    /// <summary>
+    /// Gets a paginated, optionally filtered list of members.
+    /// </summary>
+    /// <param name="sportId">If provided, restricts results to members associated with this sport.</param>
+    /// <param name="isActive">If provided, restricts results to members with this active status.</param>
+    /// <param name="name">If provided, restricts results to members whose name matches this value.</param>
+    /// <param name="joinedFrom">If provided, restricts results to members who joined on or after this date.</param>
+    /// <param name="joinedTo">If provided, restricts results to members who joined on or before this date.</param>
+    /// <param name="page">The page number to retrieve. Defaults to 1 and is clamped to a minimum of 1.</param>
+    /// <param name="pageSize">
+    /// The number of items per page. Defaults to <see cref="PaginationOptions.DefaultPageSize"/> and is
+    /// clamped to <see cref="PaginationOptions.MaxPageSize"/> when not specified or provided.
+    /// </param>
+    /// <returns>The matching members for the requested page.</returns>
+    [HttpGet]
+    public async Task<ActionResult<MemberListResponse>> GetAll(
+        [FromQuery] Guid? sportId,
+        [FromQuery] bool? isActive,
+        [FromQuery] string? name,
+        [FromQuery] DateOnly? joinedFrom,
+        [FromQuery] DateOnly? joinedTo,
+        [FromQuery] int? page,
+        [FromQuery] int? pageSize)
+    {
+        var effectivePage = Math.Max(page ?? 1, 1);
+        var effectivePageSize = Math.Clamp(
+            pageSize ?? _paginationOptions.DefaultPageSize,
+            1,
+            _paginationOptions.MaxPageSize);
+
+        var result = await _memberService.GetAllAsync(new MemberListQuery
+        {
+            SportId = sportId,
+            IsActive = isActive,
+            NameSearch = name,
+            JoinedFrom = joinedFrom,
+            JoinedTo = joinedTo,
+            Page = effectivePage,
+            PageSize = effectivePageSize
+        });
+
+        return Ok(new MemberListResponse
+        {
+            Items = result.Items.Select(MemberResponse.FromEntity).ToList(),
+            TotalCount = result.TotalCount,
+            Page = effectivePage,
+            PageSize = effectivePageSize
+        });
+    }
+
+    /// <summary>
+    /// Gets a single member by identifier.
+    /// </summary>
+    /// <param name="id">The unique identifier of the member.</param>
+    /// <returns>The requested member.</returns>
+    /// <exception cref="Yellowtail.Services.Exceptions.NotFoundException">No member with the given identifier exists.</exception>
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<MemberResponse>> GetById(Guid id)
     {
-        var member = await memberService.GetByIdAsync(id);
-        return member is null ? NotFound() : Ok(MemberResponse.FromEntity(member));
+        var member = await _memberService.GetByIdAsync(id);
+        return Ok(MemberResponse.FromEntity(member));
     }
 
+    /// <summary>
+    /// Creates a new member.
+    /// </summary>
+    /// <param name="request">The details of the member to create.</param>
+    /// <returns>The created member.</returns>
+    /// <exception cref="Yellowtail.Services.Exceptions.ValidationFailedException">One or more of the requested sport identifiers does not exist.</exception>
     [HttpPost]
     public async Task<ActionResult<MemberResponse>> Create(CreateMemberRequest request)
     {
-        var member = await memberService.CreateAsync(request.FirstName, request.LastName, request.Email);
+        var validation = await _createValidator.ValidateAsync(request);
+        if (!validation.IsValid)
+        {
+            return BadRequest(validation.ToProblemDetails());
+        }
+
+        var member = await _memberService.CreateAsync(new MemberCreateInput
+        {
+            FirstName = request.FirstName,
+            LastName = request.LastName,
+            Email = request.Email,
+            Phone = request.Phone,
+            DateOfBirth = request.DateOfBirth,
+            PhotoUrl = request.PhotoUrl,
+            Role = request.Role ?? MemberRole.Member,
+            SportIds = request.SportIds ?? []
+        });
+
         var response = MemberResponse.FromEntity(member);
         return CreatedAtAction(nameof(GetById), new { id = response.Id }, response);
     }
 
+    /// <summary>
+    /// Updates an existing member.
+    /// </summary>
+    /// <param name="id">The unique identifier of the member to update.</param>
+    /// <param name="request">The updated details of the member.</param>
+    /// <returns>No content on success.</returns>
+    /// <exception cref="Yellowtail.Services.Exceptions.NotFoundException">No member with the given identifier exists.</exception>
+    /// <exception cref="Yellowtail.Services.Exceptions.ValidationFailedException">One or more of the requested sport identifiers does not exist.</exception>
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, UpdateMemberRequest request)
     {
-        var updated = await memberService.UpdateAsync(id, request.FirstName, request.LastName, request.Email, request.IsActive);
-        return updated ? NoContent() : NotFound();
+        var validation = await _updateValidator.ValidateAsync(request);
+        if (!validation.IsValid)
+        {
+            return BadRequest(validation.ToProblemDetails());
+        }
+
+        await _memberService.UpdateAsync(id, new MemberUpdateInput
+        {
+            FirstName = request.FirstName,
+            LastName = request.LastName,
+            Email = request.Email,
+            Phone = request.Phone,
+            DateOfBirth = request.DateOfBirth,
+            PhotoUrl = request.PhotoUrl,
+            Role = request.Role,
+            IsActive = request.IsActive,
+            SportIds = request.SportIds ?? []
+        });
+
+        return NoContent();
     }
 
+    /// <summary>
+    /// Deletes a member. This is a soft delete: the member is marked inactive rather than removed.
+    /// </summary>
+    /// <param name="id">The unique identifier of the member to delete.</param>
+    /// <returns>No content on success.</returns>
+    /// <exception cref="Yellowtail.Services.Exceptions.NotFoundException">No member with the given identifier exists.</exception>
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        var deleted = await memberService.DeleteAsync(id);
-        return deleted ? NoContent() : NotFound();
+        await _memberService.DeleteAsync(id);
+        return NoContent();
     }
 }
