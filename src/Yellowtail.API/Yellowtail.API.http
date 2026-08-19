@@ -1,6 +1,0 @@
-@Yellowtail.API_HostAddress = http://localhost:5191
-
-GET {{Yellowtail.API_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###
