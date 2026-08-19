@@ -42,40 +42,24 @@ public class MembersController : ControllerBase
     /// <summary>
     /// Gets a paginated, optionally filtered list of members.
     /// </summary>
-    /// <param name="sportId">If provided, restricts results to members associated with this sport.</param>
-    /// <param name="isActive">If provided, restricts results to members with this active status.</param>
-    /// <param name="name">If provided, restricts results to members whose name matches this value.</param>
-    /// <param name="joinedFrom">If provided, restricts results to members who joined on or after this date.</param>
-    /// <param name="joinedTo">If provided, restricts results to members who joined on or before this date.</param>
-    /// <param name="page">The page number to retrieve. Defaults to 1 and is clamped to a minimum of 1.</param>
-    /// <param name="pageSize">
-    /// The number of items per page. Defaults to <see cref="PaginationOptions.DefaultPageSize"/> and is
-    /// clamped to <see cref="PaginationOptions.MaxPageSize"/> when not specified or provided.
-    /// </param>
+    /// <param name="filter">The filter and pagination criteria, bound from the query string.</param>
     /// <returns>The matching members for the requested page.</returns>
     [HttpGet]
-    public async Task<ActionResult<MemberListResponse>> GetAll(
-        [FromQuery] Guid? sportId,
-        [FromQuery] bool? isActive,
-        [FromQuery] string? name,
-        [FromQuery] DateOnly? joinedFrom,
-        [FromQuery] DateOnly? joinedTo,
-        [FromQuery] int? page,
-        [FromQuery] int? pageSize)
+    public async Task<ActionResult<MemberListResponse>> GetAll([FromQuery] MemberListFilterRequest filter)
     {
-        var effectivePage = Math.Max(page ?? 1, 1);
+        var effectivePage = Math.Max(filter.Page ?? 1, 1);
         var effectivePageSize = Math.Clamp(
-            pageSize ?? _paginationOptions.DefaultPageSize,
+            filter.PageSize ?? _paginationOptions.DefaultPageSize,
             1,
             _paginationOptions.MaxPageSize);
 
         var result = await _memberService.GetAllAsync(new MemberListQuery
         {
-            SportId = sportId,
-            IsActive = isActive,
-            NameSearch = name,
-            JoinedFrom = joinedFrom,
-            JoinedTo = joinedTo,
+            SportId = filter.SportId,
+            IsActive = filter.IsActive,
+            NameSearch = filter.Name,
+            JoinedFrom = filter.JoinedFrom,
+            JoinedTo = filter.JoinedTo,
             Page = effectivePage,
             PageSize = effectivePageSize
         });
