@@ -1,9 +1,7 @@
-using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Yellowtail.API.Configuration;
 using Yellowtail.API.Contracts;
-using Yellowtail.API.Validators;
 using Yellowtail.Data.Enums;
 using Yellowtail.Services.Contracts;
 using Yellowtail.Services.Models;
@@ -11,7 +9,8 @@ using Yellowtail.Services.Models;
 namespace Yellowtail.API.Controllers;
 
 /// <summary>
-/// Exposes CRUD and listing endpoints for members.
+/// Exposes CRUD and listing endpoints for members. Request validation is handled globally by
+/// <see cref="Filters.ValidationFilter"/>, so actions can assume incoming requests are already valid.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -23,16 +22,6 @@ public class MembersController : ControllerBase
     private readonly IMemberService _memberService;
 
     /// <summary>
-    /// Validates <see cref="CreateMemberRequest"/> payloads.
-    /// </summary>
-    private readonly IValidator<CreateMemberRequest> _createValidator;
-
-    /// <summary>
-    /// Validates <see cref="UpdateMemberRequest"/> payloads.
-    /// </summary>
-    private readonly IValidator<UpdateMemberRequest> _updateValidator;
-
-    /// <summary>
     /// The configured default and maximum page sizes for the members list.
     /// </summary>
     private readonly PaginationOptions _paginationOptions;
@@ -41,18 +30,12 @@ public class MembersController : ControllerBase
     /// Initializes a new instance of the <see cref="MembersController"/> class.
     /// </summary>
     /// <param name="memberService">The service used to read and persist members.</param>
-    /// <param name="createValidator">Validates <see cref="CreateMemberRequest"/> payloads.</param>
-    /// <param name="updateValidator">Validates <see cref="UpdateMemberRequest"/> payloads.</param>
     /// <param name="paginationOptions">The configured default and maximum page sizes for the members list.</param>
     public MembersController(
         IMemberService memberService,
-        IValidator<CreateMemberRequest> createValidator,
-        IValidator<UpdateMemberRequest> updateValidator,
         IOptions<PaginationOptions> paginationOptions)
     {
         _memberService = memberService;
-        _createValidator = createValidator;
-        _updateValidator = updateValidator;
         _paginationOptions = paginationOptions.Value;
     }
 
@@ -128,12 +111,6 @@ public class MembersController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<MemberResponse>> Create(CreateMemberRequest request)
     {
-        var validation = await _createValidator.ValidateAsync(request);
-        if (!validation.IsValid)
-        {
-            return BadRequest(validation.ToProblemDetails());
-        }
-
         var member = await _memberService.CreateAsync(new MemberCreateInput
         {
             FirstName = request.FirstName,
@@ -161,12 +138,6 @@ public class MembersController : ControllerBase
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, UpdateMemberRequest request)
     {
-        var validation = await _updateValidator.ValidateAsync(request);
-        if (!validation.IsValid)
-        {
-            return BadRequest(validation.ToProblemDetails());
-        }
-
         await _memberService.UpdateAsync(id, new MemberUpdateInput
         {
             FirstName = request.FirstName,
