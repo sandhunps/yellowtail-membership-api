@@ -1,3 +1,4 @@
+using Yellowtail.Data.Auditing;
 using Yellowtail.Data.Enums;
 
 namespace Yellowtail.Data.Entities;
@@ -5,7 +6,7 @@ namespace Yellowtail.Data.Entities;
 /// <summary>
 /// Represents a sports club member.
 /// </summary>
-public class Member
+public class Member : IAuditable
 {
     /// <summary>
     /// The unique identifier of the member.
@@ -63,4 +64,14 @@ public class Member
     /// The sports this member is associated with, via the <see cref="MemberSport"/> join entity.
     /// </summary>
     public ICollection<MemberSport> MemberSports { get; set; } = new List<MemberSport>();
+
+    /// <summary>
+    /// The UTC date and time the member was created. Stamped automatically on insert.
+    /// </summary>
+    public DateTime CreatedOn { get; set; }
+
+    /// <summary>
+    /// The UTC date and time the member was last modified, or <see langword="null"/> if never updated since creation.
+    /// </summary>
+    public DateTime? ModifiedOn { get; set; }
 }
