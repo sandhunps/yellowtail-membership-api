@@ -27,8 +27,6 @@ public class MemberServiceTests
             SportId = Guid.NewGuid(),
             IsActive = false,
             NameSearch = "ada",
-            JoinedFrom = new DateOnly(2026, 1, 1),
-            JoinedTo = new DateOnly(2026, 12, 31),
             Page = 2,
             PageSize = 10
         };
@@ -47,8 +45,6 @@ public class MemberServiceTests
         Assert.Equal(query.SportId, capturedQuery!.SportId);
         Assert.Equal(query.IsActive, capturedQuery.IsActive);
         Assert.Equal(query.NameSearch, capturedQuery.NameSearch);
-        Assert.Equal(query.JoinedFrom, capturedQuery.JoinedFrom);
-        Assert.Equal(query.JoinedTo, capturedQuery.JoinedTo);
         Assert.Equal(query.Page, capturedQuery.Page);
         Assert.Equal(query.PageSize, capturedQuery.PageSize);
     }

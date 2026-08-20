@@ -41,8 +41,6 @@ public class MemberService : IMemberService
             SportId = query.SportId,
             IsActive = query.IsActive,
             NameSearch = query.NameSearch,
-            JoinedFrom = query.JoinedFrom,
-            JoinedTo = query.JoinedTo,
             Page = query.Page,
             PageSize = query.PageSize
         });

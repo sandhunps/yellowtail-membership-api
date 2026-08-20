@@ -23,7 +23,14 @@ public static class ApiServiceCollectionExtensions
     {
         services.AddControllers(options => options.Filters.Add<ValidationFilter>());
         services.AddEndpointsApiExplorer();
-        services.AddSwaggerGen();
+        services.AddSwaggerGen(options =>
+        {
+            var xmlPath = Path.Combine(AppContext.BaseDirectory, $"{typeof(ApiServiceCollectionExtensions).Assembly.GetName().Name}.xml");
+            if (File.Exists(xmlPath))
+            {
+                options.IncludeXmlComments(xmlPath);
+            }
+        });
 
         services.Configure<PaginationOptions>(configuration.GetSection(PaginationOptions.SectionName));
 

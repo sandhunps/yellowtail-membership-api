@@ -23,16 +23,6 @@ public class MemberListFilterRequest
     public string? Name { get; set; }
 
     /// <summary>
-    /// If provided, restricts results to members who joined on or after this date.
-    /// </summary>
-    public DateOnly? JoinedFrom { get; set; }
-
-    /// <summary>
-    /// If provided, restricts results to members who joined on or before this date.
-    /// </summary>
-    public DateOnly? JoinedTo { get; set; }
-
-    /// <summary>
     /// The page number to retrieve. Defaults to 1 and is clamped to a minimum of 1.
     /// </summary>
     public int? Page { get; set; }

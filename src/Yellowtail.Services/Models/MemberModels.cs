@@ -123,16 +123,6 @@ public class MemberListQuery
     public string? NameSearch { get; set; }
 
     /// <summary>
-    /// If set, restricts results to members who joined on or after this date.
-    /// </summary>
-    public DateOnly? JoinedFrom { get; set; }
-
-    /// <summary>
-    /// If set, restricts results to members who joined on or before this date.
-    /// </summary>
-    public DateOnly? JoinedTo { get; set; }
-
-    /// <summary>
     /// The page number to retrieve, starting at 1.
     /// </summary>
     public int Page { get; set; }

@@ -70,8 +70,6 @@ public class MembersControllerTests
     public async Task GetAll_PassesFilterFieldsThroughToService()
     {
         var sportId = Guid.NewGuid();
-        var joinedFrom = new DateOnly(2026, 1, 1);
-        var joinedTo = new DateOnly(2026, 6, 1);
         MemberListQuery? captured = null;
 
         _memberService
@@ -84,8 +82,6 @@ public class MembersControllerTests
             SportId = sportId,
             IsActive = false,
             Name = "ada",
-            JoinedFrom = joinedFrom,
-            JoinedTo = joinedTo,
             Page = 3,
             PageSize = 15
         });
@@ -94,8 +90,6 @@ public class MembersControllerTests
         Assert.Equal(sportId, captured!.SportId);
         Assert.Equal(false, captured.IsActive);
         Assert.Equal("ada", captured.NameSearch);
-        Assert.Equal(joinedFrom, captured.JoinedFrom);
-        Assert.Equal(joinedTo, captured.JoinedTo);
         Assert.Equal(3, captured.Page);
         Assert.Equal(15, captured.PageSize);
     }

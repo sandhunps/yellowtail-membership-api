@@ -44,16 +44,6 @@ public class MemberRepository : IMemberRepository
                 EF.Functions.ILike(m.LastName, $"%{search}%"));
         }
 
-        if (query.JoinedFrom is { } joinedFrom)
-        {
-            members = members.Where(m => m.JoinedOn >= joinedFrom);
-        }
-
-        if (query.JoinedTo is { } joinedTo)
-        {
-            members = members.Where(m => m.JoinedOn <= joinedTo);
-        }
-
         var totalCount = await members.CountAsync();
 
         var items = await members

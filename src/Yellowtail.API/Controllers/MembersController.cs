@@ -58,8 +58,6 @@ public class MembersController : ControllerBase
             SportId = filter.SportId,
             IsActive = filter.IsActive,
             NameSearch = filter.Name,
-            JoinedFrom = filter.JoinedFrom,
-            JoinedTo = filter.JoinedTo,
             Page = effectivePage,
             PageSize = effectivePageSize
         });
