@@ -9,7 +9,7 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
 
 builder.Services
     .AddPersistence(builder.Configuration)
-    .AddApplicationServices()
+    .AddApplicationServices(builder.Configuration)
     .AddApiServices(builder.Configuration);
 
 var app = builder.Build();
