@@ -114,6 +114,16 @@ public class MemberRepository : IMemberRepository
         _context.Sports.AnyAsync(s => s.Id == sportId);
 
     /// <inheritdoc/>
+    public Task<bool> EmailExistsAsync(string email, Guid? excludeMemberId = null) =>
+        _context.Members.AnyAsync(m =>
+            EF.Functions.ILike(m.Email, email) && (excludeMemberId == null || m.Id != excludeMemberId));
+
+    /// <inheritdoc/>
+    public Task<bool> PhoneExistsAsync(string phone, Guid? excludeMemberId = null) =>
+        _context.Members.AnyAsync(m =>
+            m.Phone == phone && (excludeMemberId == null || m.Id != excludeMemberId));
+
+    /// <inheritdoc/>
     public async Task ReplaceMemberSportsAsync(Guid memberId, IEnumerable<Guid> sportIds)
     {
         var existing = _context.MemberSports.Where(ms => ms.MemberId == memberId);

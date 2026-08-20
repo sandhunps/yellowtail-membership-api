@@ -122,6 +122,38 @@ public class MemberServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_DuplicateEmail_ThrowsValidationFailedExceptionAndDoesNotAddMember()
+    {
+        var input = new MemberCreateInput { FirstName = "Ada", LastName = "Lovelace", Email = "ada@example.com" };
+        _repository.Setup(r => r.EmailExistsAsync("ada@example.com", null)).ReturnsAsync(true);
+
+        await Assert.ThrowsAsync<ValidationFailedException>(() => _sut.CreateAsync(input));
+        _repository.Verify(r => r.AddAsync(It.IsAny<Member>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateAsync_DuplicatePhone_ThrowsValidationFailedExceptionAndDoesNotAddMember()
+    {
+        var input = new MemberCreateInput { FirstName = "Ada", LastName = "Lovelace", Email = "ada@example.com", Phone = "+1-555-0100" };
+        _repository.Setup(r => r.PhoneExistsAsync("+1-555-0100", null)).ReturnsAsync(true);
+
+        await Assert.ThrowsAsync<ValidationFailedException>(() => _sut.CreateAsync(input));
+        _repository.Verify(r => r.AddAsync(It.IsAny<Member>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateAsync_NoPhone_DoesNotCheckPhoneUniqueness()
+    {
+        var input = new MemberCreateInput { FirstName = "Ada", LastName = "Lovelace", Email = "ada@example.com", Phone = null };
+        _repository.Setup(r => r.AddAsync(It.IsAny<Member>())).Returns(Task.CompletedTask);
+        _repository.Setup(r => r.GetByIdAsync(It.IsAny<Guid>())).ReturnsAsync((Member?)null);
+
+        await _sut.CreateAsync(input);
+
+        _repository.Verify(r => r.PhoneExistsAsync(It.IsAny<string>(), It.IsAny<Guid?>()), Times.Never);
+    }
+
+    [Fact]
     public async Task CreateAsync_SportDoesNotExist_ThrowsValidationFailedExceptionAndDoesNotAddMember()
     {
         var sportId = Guid.NewGuid();
@@ -174,6 +206,32 @@ public class MemberServiceTests
 
         await Assert.ThrowsAsync<NotFoundException>(() =>
             _sut.UpdateAsync(id, new MemberUpdateInput { FirstName = "X", LastName = "Y", Email = "x@example.com" }));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_EmailUsedByAnotherMember_ThrowsValidationFailedException()
+    {
+        var id = Guid.NewGuid();
+        _repository.Setup(r => r.GetByIdAsync(id)).ReturnsAsync(new Member { Id = id });
+        _repository.Setup(r => r.EmailExistsAsync("taken@example.com", id)).ReturnsAsync(true);
+
+        await Assert.ThrowsAsync<ValidationFailedException>(() =>
+            _sut.UpdateAsync(id, new MemberUpdateInput { FirstName = "X", LastName = "Y", Email = "taken@example.com" }));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ExcludesSelfFromEmailUniquenessCheck()
+    {
+        var id = Guid.NewGuid();
+        var existing = new Member { Id = id, Email = "self@example.com" };
+        _repository.Setup(r => r.GetByIdAsync(id)).ReturnsAsync(existing);
+        _repository.Setup(r => r.EmailExistsAsync("self@example.com", id)).ReturnsAsync(false);
+        _repository.Setup(r => r.UpdateAsync(existing)).ReturnsAsync(true);
+
+        await _sut.UpdateAsync(id, new MemberUpdateInput { FirstName = "X", LastName = "Y", Email = "self@example.com" });
+
+        _repository.Verify(r => r.EmailExistsAsync("self@example.com", id), Times.Once);
+        _repository.Verify(r => r.UpdateAsync(existing), Times.Once);
     }
 
     [Fact]

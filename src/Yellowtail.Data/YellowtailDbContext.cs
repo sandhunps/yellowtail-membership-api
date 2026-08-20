@@ -48,6 +48,8 @@ public class YellowtailDbContext : DbContext
             entity.Property(m => m.PhotoUrl).HasMaxLength(2048);
             entity.Property(m => m.Role).HasConversion<string>().HasMaxLength(20);
             entity.Property(m => m.CreatedOn).IsRequired();
+            entity.HasIndex(m => m.Email).IsUnique().HasFilter("\"IsActive\" = true");
+            entity.HasIndex(m => m.Phone).IsUnique().HasFilter("\"IsActive\" = true");
 
             // Default-hidden for soft-deleted/inactive members; explicit reads (GetById,
             // update, delete) opt out via IgnoreQueryFilters. Mirrors the tenant-filter

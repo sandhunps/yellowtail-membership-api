@@ -98,6 +98,22 @@ public interface IMemberRepository
     Task<bool> SportExistsAsync(Guid sportId);
 
     /// <summary>
+    /// Checks whether an active member already has the given email address (case-insensitive).
+    /// </summary>
+    /// <param name="email">The email address to check.</param>
+    /// <param name="excludeMemberId">If set, a member with this identifier is not considered a match (for update scenarios).</param>
+    /// <returns><see langword="true"/> if another active member already has this email; otherwise <see langword="false"/>.</returns>
+    Task<bool> EmailExistsAsync(string email, Guid? excludeMemberId = null);
+
+    /// <summary>
+    /// Checks whether an active member already has the given phone number.
+    /// </summary>
+    /// <param name="phone">The phone number to check.</param>
+    /// <param name="excludeMemberId">If set, a member with this identifier is not considered a match (for update scenarios).</param>
+    /// <returns><see langword="true"/> if another active member already has this phone number; otherwise <see langword="false"/>.</returns>
+    Task<bool> PhoneExistsAsync(string phone, Guid? excludeMemberId = null);
+
+    /// <summary>
     /// Replaces a member's sport associations with the given set of sport identifiers.
     /// </summary>
     /// <param name="memberId">The unique identifier of the member.</param>

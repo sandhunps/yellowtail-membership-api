@@ -67,6 +67,7 @@ public class MemberService : IMemberService
     /// <inheritdoc/>
     public async Task<Member> CreateAsync(MemberCreateInput input)
     {
+        await EnsureEmailAndPhoneAreUniqueAsync(input.Email, input.Phone, excludeMemberId: null);
         await EnsureSportsExistAsync(input.SportIds);
 
         var member = new Member
@@ -106,6 +107,7 @@ public class MemberService : IMemberService
             throw new NotFoundException($"Member '{id}' was not found.");
         }
 
+        await EnsureEmailAndPhoneAreUniqueAsync(input.Email, input.Phone, excludeMemberId: id);
         await EnsureSportsExistAsync(input.SportIds);
 
         existing.FirstName = input.FirstName;
@@ -135,6 +137,31 @@ public class MemberService : IMemberService
         }
 
         _logger.LogInformation("Soft-deleted member {MemberId}", id);
+    }
+
+    /// <summary>
+    /// Validates that no other active member already has the given email or phone number.
+    /// Applies on both create and update, since checking only on create would let an update
+    /// silently collide with an email/phone already in use by a different member.
+    /// </summary>
+    /// <param name="email">The email address to validate.</param>
+    /// <param name="phone">The phone number to validate, if provided. Not checked when absent.</param>
+    /// <param name="excludeMemberId">
+    /// On update, the member being updated is excluded from the check, so keeping one's own
+    /// email/phone unchanged doesn't collide with oneself. <see langword="null"/> on create.
+    /// </param>
+    /// <exception cref="ValidationFailedException">Another active member already has this email or phone number.</exception>
+    private async Task EnsureEmailAndPhoneAreUniqueAsync(string email, string? phone, Guid? excludeMemberId)
+    {
+        if (await _repository.EmailExistsAsync(email, excludeMemberId))
+        {
+            throw new ValidationFailedException($"Email '{email}' is already in use by another member.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(phone) && await _repository.PhoneExistsAsync(phone, excludeMemberId))
+        {
+            throw new ValidationFailedException($"Phone number '{phone}' is already in use by another member.");
+        }
     }
 
     /// <summary>
