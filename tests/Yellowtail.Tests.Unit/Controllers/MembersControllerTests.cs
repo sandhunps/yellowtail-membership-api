@@ -109,7 +109,7 @@ public class MembersControllerTests
     }
 
     [Fact]
-    public async Task Create_ValidRequest_ReturnsCreatedAtActionWithMappedMember()
+    public async Task Create_ValidRequest_ReturnsOkWithMappedMemberId()
     {
         var request = new CreateMemberRequest
         {
@@ -128,9 +128,8 @@ public class MembersControllerTests
 
         var response = await _sut.Create(request);
 
-        var createdAt = Assert.IsType<CreatedAtActionResult>(response.Result);
-        Assert.Equal(nameof(MembersController.GetById), createdAt.ActionName);
-        var body = Assert.IsType<Guid>(createdAt.Value);
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var body = Assert.IsType<Guid>(ok.Value);
         Assert.Equal(created.Id, body);
         Assert.NotNull(captured);
         Assert.Equal(MemberRole.Member, captured!.Role);

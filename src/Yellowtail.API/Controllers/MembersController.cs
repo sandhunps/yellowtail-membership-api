@@ -105,7 +105,7 @@ public class MembersController : ControllerBase
             SportIds = request.SportIds ?? []
         });
 
-        return CreatedAtAction(nameof(GetById), new { id = member.Id }, member.Id);
+        return Ok(member.Id);
     }
 
     /// <summary>
