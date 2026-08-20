@@ -34,6 +34,11 @@ public class SportService : ISportService
     /// <inheritdoc/>
     public async Task<IReadOnlyList<Sport>> GetAllAsync()
     {
+        #region LLD
+        // Step 1: Fetch all sports from the repository (global catalog, no filtering).
+        // Step 2: Log the count returned at Debug level.
+        // Step 3: Return the list of sports.
+        #endregion
         var sports = await _repository.GetAllAsync();
         _logger.LogDebug("Listed {Count} sports from the catalog", sports.Count);
         return sports;

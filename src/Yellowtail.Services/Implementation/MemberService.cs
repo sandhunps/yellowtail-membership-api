@@ -36,6 +36,13 @@ public class MemberService : IMemberService
     /// <inheritdoc/>
     public async Task<PagedResult<Member>> GetAllAsync(MemberListQuery query)
     {
+        #region LLD
+        // Step 1: Map the incoming service-layer query (MemberListQuery) to the data-layer
+        //         query shape (MemberQuery) the repository expects.
+        // Step 2: Ask the repository for the matching page of members plus the total count.
+        // Step 3: Log the result counts and filter criteria at Debug level for diagnostics.
+        // Step 4: Return the paged result to the caller.
+        #endregion
         var result = await _repository.GetAllAsync(new MemberQuery
         {
             SportId = query.SportId,
@@ -55,6 +62,11 @@ public class MemberService : IMemberService
     /// <inheritdoc/>
     public async Task<Member> GetByIdAsync(Guid id)
     {
+        #region LLD
+        // Step 1: Fetch the member by id from the repository, regardless of active status.
+        // Step 2: If no member is found, throw NotFoundException so the API layer maps it to 404.
+        // Step 3: Return the found member.
+        #endregion
         var member = await _repository.GetByIdAsync(id);
         if (member is null)
         {
@@ -67,6 +79,19 @@ public class MemberService : IMemberService
     /// <inheritdoc/>
     public async Task<Member> CreateAsync(MemberCreateInput input)
     {
+        #region LLD
+        // Step 1: Validate that the email and phone number aren't already used by another
+        //         active member.
+        // Step 2: Validate that every requested sport id exists in the catalog.
+        // Step 3: Build a new Member entity from the input: generate a new id, default
+        //         IsActive to true, and stamp JoinedOn as today.
+        // Step 4: Persist the new member via the repository.
+        // Step 5: If any sports were requested, associate them with the new member.
+        // Step 6: Log the creation at Information level.
+        // Step 7: Re-fetch the member (so the response includes its loaded sport
+        //         associations) and return it, falling back to the in-memory instance
+        //         if the re-fetch somehow returns nothing.
+        #endregion
         await EnsureEmailAndPhoneAreUniqueAsync(input.Email, input.Phone, excludeMemberId: null);
         await EnsureSportsExistAsync(input.SportIds);
 
@@ -101,6 +126,17 @@ public class MemberService : IMemberService
     /// <inheritdoc/>
     public async Task UpdateAsync(Guid id, MemberUpdateInput input)
     {
+        #region LLD
+        // Step 1: Fetch the existing member by id; throw NotFoundException if it doesn't exist.
+        // Step 2: Validate that the email and phone number aren't already used by a
+        //         *different* active member (the member being updated is excluded from
+        //         its own uniqueness check).
+        // Step 3: Validate that every requested sport id exists in the catalog.
+        // Step 4: Apply the input values onto the existing tracked member entity.
+        // Step 5: Persist the updated member via the repository.
+        // Step 6: Replace the member's sport associations with the requested set.
+        // Step 7: Log the update at Information level.
+        #endregion
         var existing = await _repository.GetByIdAsync(id);
         if (existing is null)
         {
@@ -130,6 +166,11 @@ public class MemberService : IMemberService
     /// <inheritdoc/>
     public async Task DeleteAsync(Guid id)
     {
+        #region LLD
+        // Step 1: Ask the repository to soft-delete the member (mark IsActive = false).
+        // Step 2: If no matching member was found, throw NotFoundException.
+        // Step 3: Log the soft-delete at Information level.
+        #endregion
         var deleted = await _repository.SoftDeleteAsync(id);
         if (!deleted)
         {
@@ -153,6 +194,13 @@ public class MemberService : IMemberService
     /// <exception cref="ValidationFailedException">Another active member already has this email or phone number.</exception>
     private async Task EnsureEmailAndPhoneAreUniqueAsync(string email, string? phone, Guid? excludeMemberId)
     {
+        #region LLD
+        // Step 1: Check whether another active member already has this email (case-insensitive);
+        //         throw ValidationFailedException if so.
+        // Step 2: If a phone number was provided, check whether another active member already
+        //         has it; throw ValidationFailedException if so. Skipped entirely when phone
+        //         is null/empty, since phone is optional and shouldn't force uniqueness on "no phone".
+        #endregion
         if (await _repository.EmailExistsAsync(email, excludeMemberId))
         {
             throw new ValidationFailedException($"Email '{email}' is already in use by another member.");
@@ -171,6 +219,11 @@ public class MemberService : IMemberService
     /// <exception cref="ValidationFailedException">One of the given sport identifiers does not exist.</exception>
     private async Task EnsureSportsExistAsync(IReadOnlyList<Guid> sportIds)
     {
+        #region LLD
+        // Step 1: For each requested sport id, ask the repository whether it exists in the catalog.
+        // Step 2: On the first sport id that doesn't exist, throw ValidationFailedException and
+        //         stop checking the rest (fail fast).
+        #endregion
         foreach (var sportId in sportIds)
         {
             if (!await _repository.SportExistsAsync(sportId))

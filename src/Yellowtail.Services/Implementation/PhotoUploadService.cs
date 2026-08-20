@@ -56,6 +56,19 @@ public class PhotoUploadService : IPhotoUploadService
     /// <inheritdoc/>
     public PhotoUploadSignature GenerateUploadSignature(string fileExtension)
     {
+        #region LLD
+        // Step 1: Resolve the content type for the given file extension, rejecting anything
+        //         unsupported before doing any further work.
+        // Step 2: Build a unique object key from the configured upload folder + a new GUID +
+        //         the normalized extension.
+        // Step 3: Compute the expiry timestamp the pre-signed URL will be valid until.
+        // Step 4: Ask the S3-compatible client to compute the pre-signed PUT URL for that key,
+        //         content type, and expiry.
+        // Step 5: Log the signature generation at Information level (key, content type, expiry
+        //         only - never the actual URL/signature, since those are live credentials).
+        // Step 6: Build and return the PhotoUploadSignature: the pre-signed upload URL, the
+        //         resulting public read URL, the content type, and the expiry.
+        #endregion
         var contentType = ResolveContentType(fileExtension);
         var key = $"{_options.UploadFolder}/{Guid.NewGuid()}.{fileExtension.TrimStart('.').ToLowerInvariant()}";
         var expiresAt = DateTimeOffset.UtcNow.Add(SignatureLifetime);
@@ -88,8 +101,16 @@ public class PhotoUploadService : IPhotoUploadService
     /// <param name="fileExtension">The file extension (without a leading dot) to resolve.</param>
     /// <returns>The corresponding content type.</returns>
     /// <exception cref="ValidationFailedException"><paramref name="fileExtension"/> is not a supported image type.</exception>
-    private static string ResolveContentType(string fileExtension) =>
-        fileExtension.TrimStart('.').ToLowerInvariant() switch
+    private static string ResolveContentType(string fileExtension)
+    {
+        #region LLD
+        // Step 1: Normalize the extension: strip a leading dot if present, lowercase it.
+        // Step 2: Map known extensions (jpg/jpeg, png, webp) to their MIME content type.
+        // Step 3: For anything else, throw ValidationFailedException so the caller (and
+        //         ultimately the API) rejects the request with a 400 before any upload URL
+        //         is ever generated.
+        #endregion
+        return fileExtension.TrimStart('.').ToLowerInvariant() switch
         {
             "jpg" or "jpeg" => "image/jpeg",
             "png" => "image/png",
@@ -97,4 +118,5 @@ public class PhotoUploadService : IPhotoUploadService
             _ => throw new ValidationFailedException(
                 $"Unsupported file extension '{fileExtension}'. Use jpg, jpeg, png, or webp.")
         };
+    }
 }
