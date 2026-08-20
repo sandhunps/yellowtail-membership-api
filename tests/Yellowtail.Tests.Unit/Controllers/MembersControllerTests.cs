@@ -130,8 +130,8 @@ public class MembersControllerTests
 
         var createdAt = Assert.IsType<CreatedAtActionResult>(response.Result);
         Assert.Equal(nameof(MembersController.GetById), createdAt.ActionName);
-        var body = Assert.IsType<MemberResponse>(createdAt.Value);
-        Assert.Equal(created.Id, body.Id);
+        var body = Assert.IsType<Guid>(createdAt.Value);
+        Assert.Equal(created.Id, body);
         Assert.NotNull(captured);
         Assert.Equal(MemberRole.Member, captured!.Role);
     }

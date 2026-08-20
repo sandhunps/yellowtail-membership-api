@@ -88,10 +88,10 @@ public class MembersController : ControllerBase
     /// Creates a new member.
     /// </summary>
     /// <param name="request">The details of the member to create.</param>
-    /// <returns>The created member.</returns>
+    /// <returns>The identifier of the created member.</returns>
     /// <exception cref="Yellowtail.Services.Exceptions.ValidationFailedException">One or more of the requested sport identifiers does not exist.</exception>
     [HttpPost]
-    public async Task<ActionResult<MemberResponse>> Create(CreateMemberRequest request)
+    public async Task<ActionResult<Guid>> Create(CreateMemberRequest request)
     {
         var member = await _memberService.CreateAsync(new MemberCreateInput
         {
@@ -105,8 +105,7 @@ public class MembersController : ControllerBase
             SportIds = request.SportIds ?? []
         });
 
-        var response = MemberResponse.FromEntity(member);
-        return CreatedAtAction(nameof(GetById), new { id = response.Id }, response);
+        return CreatedAtAction(nameof(GetById), new { id = member.Id }, member.Id);
     }
 
     /// <summary>
