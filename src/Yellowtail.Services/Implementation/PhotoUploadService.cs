@@ -1,5 +1,6 @@
 using Amazon.S3;
 using Amazon.S3.Model;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Yellowtail.Services.Configuration;
 using Yellowtail.Services.Contracts;
@@ -30,12 +31,20 @@ public class PhotoUploadService : IPhotoUploadService
     private readonly IAmazonS3 _s3Client;
 
     /// <summary>
+    /// The logger used to record signature generation. Never logs the actual URL or signature,
+    /// since those are live, short-lived credentials.
+    /// </summary>
+    private readonly ILogger<PhotoUploadService> _logger;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="PhotoUploadService"/> class.
     /// </summary>
     /// <param name="options">The R2 credentials and upload defaults.</param>
-    public PhotoUploadService(IOptions<R2Options> options)
+    /// <param name="logger">The logger used to record signature generation.</param>
+    public PhotoUploadService(IOptions<R2Options> options, ILogger<PhotoUploadService> logger)
     {
         _options = options.Value;
+        _logger = logger;
         _s3Client = new AmazonS3Client(_options.AccessKeyId, _options.SecretAccessKey, new AmazonS3Config
         {
             ServiceURL = $"https://{_options.AccountId}.r2.cloudflarestorage.com",
@@ -59,6 +68,10 @@ public class PhotoUploadService : IPhotoUploadService
             Expires = expiresAt.UtcDateTime,
             ContentType = contentType
         });
+
+        _logger.LogInformation(
+            "Generated upload signature for key {Key} ({ContentType}), expires {ExpiresAt}",
+            key, contentType, expiresAt);
 
         return new PhotoUploadSignature
         {

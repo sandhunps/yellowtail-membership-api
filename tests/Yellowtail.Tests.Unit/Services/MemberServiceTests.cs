@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Yellowtail.Data.Entities;
 using Yellowtail.Data.Enums;
@@ -15,7 +16,7 @@ public class MemberServiceTests
 
     public MemberServiceTests()
     {
-        _sut = new MemberService(_repository.Object);
+        _sut = new MemberService(_repository.Object, NullLogger<MemberService>.Instance);
     }
 
     [Fact]

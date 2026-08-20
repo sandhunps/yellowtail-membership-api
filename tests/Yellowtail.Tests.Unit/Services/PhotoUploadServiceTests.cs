@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Yellowtail.Services.Configuration;
 using Yellowtail.Services.Exceptions;
@@ -8,15 +9,17 @@ namespace Yellowtail.Tests.Unit.Services;
 public class PhotoUploadServiceTests
 {
     private static PhotoUploadService CreateSut(string uploadFolder = "members") =>
-        new(Options.Create(new R2Options
-        {
-            AccountId = "demo-account",
-            BucketName = "demo-bucket",
-            PublicBaseUrl = "https://pub-demo.r2.dev",
-            AccessKeyId = "demo-key",
-            SecretAccessKey = "demo-secret",
-            UploadFolder = uploadFolder
-        }));
+        new(
+            Options.Create(new R2Options
+            {
+                AccountId = "demo-account",
+                BucketName = "demo-bucket",
+                PublicBaseUrl = "https://pub-demo.r2.dev",
+                AccessKeyId = "demo-key",
+                SecretAccessKey = "demo-secret",
+                UploadFolder = uploadFolder
+            }),
+            NullLogger<PhotoUploadService>.Instance);
 
     [Theory]
     [InlineData("jpg", "image/jpeg")]

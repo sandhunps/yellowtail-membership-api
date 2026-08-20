@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Yellowtail.Data.Entities;
 using Yellowtail.Data.Repositories;
 using Yellowtail.Services.Contracts;
@@ -15,14 +16,26 @@ public class SportService : ISportService
     private readonly ISportRepository _repository;
 
     /// <summary>
+    /// The logger used to record sport catalog reads.
+    /// </summary>
+    private readonly ILogger<SportService> _logger;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="SportService"/> class.
     /// </summary>
     /// <param name="repository">The repository used to read sports.</param>
-    public SportService(ISportRepository repository)
+    /// <param name="logger">The logger used to record sport catalog reads.</param>
+    public SportService(ISportRepository repository, ILogger<SportService> logger)
     {
         _repository = repository;
+        _logger = logger;
     }
 
     /// <inheritdoc/>
-    public Task<IReadOnlyList<Sport>> GetAllAsync() => _repository.GetAllAsync();
+    public async Task<IReadOnlyList<Sport>> GetAllAsync()
+    {
+        var sports = await _repository.GetAllAsync();
+        _logger.LogDebug("Listed {Count} sports from the catalog", sports.Count);
+        return sports;
+    }
 }

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Yellowtail.Data.Entities;
 using Yellowtail.Data.Repositories;
 using Yellowtail.Services.Contracts;
@@ -17,17 +18,25 @@ public class MemberService : IMemberService
     private readonly IMemberRepository _repository;
 
     /// <summary>
+    /// The logger used to record member operations and the business-rule failures behind them.
+    /// </summary>
+    private readonly ILogger<MemberService> _logger;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="MemberService"/> class.
     /// </summary>
     /// <param name="repository">The repository used to read and persist members.</param>
-    public MemberService(IMemberRepository repository)
+    /// <param name="logger">The logger used to record member operations and the business-rule failures behind them.</param>
+    public MemberService(IMemberRepository repository, ILogger<MemberService> logger)
     {
         _repository = repository;
+        _logger = logger;
     }
 
     /// <inheritdoc/>
-    public Task<PagedResult<Member>> GetAllAsync(MemberListQuery query) =>
-        _repository.GetAllAsync(new MemberQuery
+    public async Task<PagedResult<Member>> GetAllAsync(MemberListQuery query)
+    {
+        var result = await _repository.GetAllAsync(new MemberQuery
         {
             SportId = query.SportId,
             IsActive = query.IsActive,
@@ -38,9 +47,24 @@ public class MemberService : IMemberService
             PageSize = query.PageSize
         });
 
+        _logger.LogDebug(
+            "Listed members: {ReturnedCount} of {TotalCount} (page {Page}, sportId {SportId}, isActive {IsActive}, nameSearch {NameSearch})",
+            result.Items.Count, result.TotalCount, query.Page, query.SportId, query.IsActive, query.NameSearch);
+
+        return result;
+    }
+
     /// <inheritdoc/>
-    public async Task<Member> GetByIdAsync(Guid id) =>
-        await _repository.GetByIdAsync(id) ?? throw new NotFoundException($"Member '{id}' was not found.");
+    public async Task<Member> GetByIdAsync(Guid id)
+    {
+        var member = await _repository.GetByIdAsync(id);
+        if (member is null)
+        {
+            throw new NotFoundException($"Member '{id}' was not found.");
+        }
+
+        return member;
+    }
 
     /// <inheritdoc/>
     public async Task<Member> CreateAsync(MemberCreateInput input)
@@ -68,14 +92,21 @@ public class MemberService : IMemberService
             await _repository.ReplaceMemberSportsAsync(member.Id, input.SportIds);
         }
 
+        _logger.LogInformation(
+            "Created member {MemberId} ({Email}) with {SportCount} sport(s)",
+            member.Id, member.Email, input.SportIds.Count);
+
         return await _repository.GetByIdAsync(member.Id) ?? member;
     }
 
     /// <inheritdoc/>
     public async Task UpdateAsync(Guid id, MemberUpdateInput input)
     {
-        var existing = await _repository.GetByIdAsync(id)
-            ?? throw new NotFoundException($"Member '{id}' was not found.");
+        var existing = await _repository.GetByIdAsync(id);
+        if (existing is null)
+        {
+            throw new NotFoundException($"Member '{id}' was not found.");
+        }
 
         await EnsureSportsExistAsync(input.SportIds);
 
@@ -90,6 +121,10 @@ public class MemberService : IMemberService
 
         await _repository.UpdateAsync(existing);
         await _repository.ReplaceMemberSportsAsync(id, input.SportIds);
+
+        _logger.LogInformation(
+            "Updated member {MemberId}: isActive {IsActive}, {SportCount} sport(s)",
+            id, input.IsActive, input.SportIds.Count);
     }
 
     /// <inheritdoc/>
@@ -100,6 +135,8 @@ public class MemberService : IMemberService
         {
             throw new NotFoundException($"Member '{id}' was not found.");
         }
+
+        _logger.LogInformation("Soft-deleted member {MemberId}", id);
     }
 
     /// <summary>

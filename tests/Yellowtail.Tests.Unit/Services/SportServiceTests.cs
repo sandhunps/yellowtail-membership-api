@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Yellowtail.Data.Entities;
 using Yellowtail.Data.Repositories;
@@ -14,7 +15,7 @@ public class SportServiceTests
         var sports = new List<Sport> { new() { Id = Guid.NewGuid(), Name = "Tennis" } };
         repository.Setup(r => r.GetAllAsync()).ReturnsAsync(sports);
 
-        var sut = new SportService(repository.Object);
+        var sut = new SportService(repository.Object, NullLogger<SportService>.Instance);
         var result = await sut.GetAllAsync();
 
         Assert.Same(sports, result);
