@@ -32,7 +32,9 @@ mine, reviewed before it landed.
 I opened with an explicit constraint:
 
 ```
-Provide analysis, not implementation... Do not generate code until I ask.
+You are helping me design the backend architecture and implementation strategy BEFORE coding.
+Provide analysis, not implementation. Ask clarifying questions when needed. Suggest alternatives
+with trade-offs. Do not generate code until I ask.
 ```
 
 This forced decisions into words I could push back on instead of hiding inside code. Claude
@@ -44,14 +46,23 @@ pre-filled — enough to save round-trips, but I left out things like exact fiel
 purpose, to see what Claude would think to ask. It caught one gap in my own answers unprompted:
 whether "inactive" and "soft-deleted" were meant to be the same flag.
 
-I asked for a neutral N-Tier vs. minimal-API vs. CQRS trade-off analysis with:
+I asked for a neutral N-Tier vs. minimal-API vs. CQRS trade-off analysis:
 
 ```
-Don't recommend yet.
+For each option, provide:
+1. Pros
+2. Cons
+3. Folder structure
+4. What this signals to client
+5. Extensibility story
+Don't recommend yet. Just analyze the trade-offs.
+
+we have decided to go with N-tier architecture and have implemented the code
 ```
 
-— mainly to get the reasoning on record independent of any model preference, since I'd already
-made and implemented the decision by that point.
+— mainly to get the reasoning on record independent of any model preference, since (per the
+second line, added once I circled back to this thread later) I'd already made and implemented
+the decision by that point.
 
 For multi-tenancy, Claude flagged that my own requirement recap seemed to reopen a scope I'd
 already deferred, and asked before assuming I'd changed my mind. I confirmed the deferral; the
@@ -76,7 +87,9 @@ exercised every endpoint with `curl` against the real database before calling it
 ### 2.3 Iterating on the API surface
 
 ```
-is this the best way to handle filters?... I my company project I used query options a string
+is this the best way to handle filters? what if in the future the amount of conditions
+increases? Can I have a generic way to do it? In my company project I used query options as a
+string which then resolved
 ```
 
 — I cited my own prior pattern deliberately, to see if Claude would defer to it as precedent or
@@ -90,7 +103,8 @@ concern and proposed a global `ValidationFilter` instead.
 ### 2.4 Cleanup
 
 ```
-...move service registry to an extension method... and what others you suggest?
+Can we clean up the program.cs class and move service registry to an extension method, as well
+call db context, and what others you suggest?
 ```
 
 — left open on purpose; Claude noticed the middleware pipeline had the same problem as
@@ -99,7 +113,7 @@ concern and proposed a global `ValidationFilter` instead.
 ### 2.5 Testing
 
 ```
-add unit tests, try to achieve most code coverage
+Now let's add unit tests. Try to achieve most code coverage
 ```
 
 — Claude scoped this deliberately: full coverage on `Services` and `API`, but flagged the `Data`
@@ -111,7 +125,8 @@ line / 100% branch coverage on the in-scope layers.
 ### 2.6 Image storage: Cloudinary, then a pivot to Cloudflare R2
 
 ```
-let us first ideate
+Okay now let's add image storage endpoints using Cloudinary. What all things we should do,
+let's first ideate
 ```
 
 — asked before any code. I wanted the design space (signed-URL vs. backend-proxy) laid out
@@ -120,7 +135,9 @@ uploads, User Secrets, test script), then dropped entirely for a business reason
 providers), not a technical one. I anchored the R2 request to the already-agreed architecture:
 
 ```
-the flow is the same as earlier
+okay for object storage we are planning to use Cloudflare R2. The flow is the same as earlier.
+Client will call our endpoint to get the pre-signed url, which is then used by the client to
+store the image and get the url. This is my account, tell me what to do
 ```
 
 — rather than restarting the design. This time I walked through real Cloudflare account setup
@@ -131,23 +148,61 @@ real credentials for it.
 
 ### 2.7 Later feature and structure changes
 
-- Grouping API contracts by controller — asked as a genuine question first; Claude flagged that
-  `SportResponse` is shared across two controllers and shouldn't move, and I confirmed the split
-  with everything else moved.
-- Removing an unused `joinedFrom`/`joinedTo` filter pair — a clean five-layer removal with the
-  affected tests updated in the same pass.
-- Duplicate email/phone validation, alongside a question on whether to adopt a custom
-  base-exception class from my own production code (`R2QException`). Claude recommended against
-  it — the existing `ValidationFailedException` already covered the need — the same pattern as
-  §2.3: shown a real precedent from my own experience, it reasoned about fit rather than deferring
-  to it. For the validation rule itself, I picked duplicate-rejection via multiple-choice; Claude
-  caught on its own that checking only on create (not update) would leave a loophole, and fixed
-  both. Before generating the migration it checked live dev data, found existing duplicates —
-  some mine, not just its own test data — and asked rather than silently resolving them. I chose
-  to clean it up myself.
-- `#region LLD` / `// step 1:` comments on every service method, in an exact format I specified —
-  notably cutting against Claude's own default of minimal comments, followed exactly as given
-  anyway.
+Grouping API contracts by controller — asked as a genuine question first:
+
+```
+Is it a nice touch to group contracts in API to different folders based on controller
+```
+
+Claude flagged that `SportResponse` is shared across two controllers and shouldn't move; I
+confirmed with:
+
+```
+Yes, keep shared untouched, group the rest
+```
+
+Removing an unused filter pair:
+
+```
+Remove joined from and joined to filters
+```
+
+— a clean five-layer removal with the affected tests updated in the same pass.
+
+Duplicate email/phone validation, alongside a question on whether to adopt a custom
+base-exception class from my own production code:
+
+```
+I would love to create a validation for creating a new member for email and phone number, also
+what is your suggestion on creating a custom exception class [pasted R2QException example]
+```
+
+Claude recommended against the custom exception class — the existing `ValidationFailedException`
+already covered the need — the same pattern as §2.3: shown a real precedent from my own
+experience, it reasoned about fit rather than deferring to it. For the validation rule itself, I
+picked duplicate-rejection via multiple-choice; Claude caught on its own that checking only on
+create (not update) would leave a loophole, and fixed both. Before generating the migration it
+checked live dev data, found existing duplicates — some mine, not just its own test data — and
+asked rather than silently resolving them. I chose to clean it up myself.
+
+`#region LLD` comments on every service method, in an exact format I specified:
+
+```
+can you add lld for all service methods??
+```
+
+clarified as:
+
+```
+a region just before writing any code in a method
+#Region LLD
+// step 1:
+// step 2:
+#EndRegion
+```
+
+— notably cutting against Claude's own default of minimal comments, followed exactly as given
+anyway.
 
 ---
 
