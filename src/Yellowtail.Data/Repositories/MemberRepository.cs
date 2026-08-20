@@ -27,9 +27,10 @@ public class MemberRepository : IMemberRepository
     {
         // Default (null/true) relies on Member's HasQueryFilter to show active-only.
         // isActive=false is the explicit override to see soft-deleted/inactive members.
-        var members = query.IsActive == false
+        var members = (query.IsActive == false
             ? _context.Members.IgnoreQueryFilters().Where(m => !m.IsActive)
-            : _context.Members;
+            : _context.Members)
+            .AsNoTracking();
 
         if (query.SportId is { } sportId)
         {
@@ -67,6 +68,7 @@ public class MemberRepository : IMemberRepository
     {
         return _context.Members
             .IgnoreQueryFilters()
+            .AsNoTracking()
             .Include(m => m.MemberSports)
             .ThenInclude(ms => ms.Sport)
             .SingleOrDefaultAsync(m => m.Id == id);
