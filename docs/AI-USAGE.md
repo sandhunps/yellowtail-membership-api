@@ -1,269 +1,404 @@
 # AI Usage in Yellowtail POC
 
-**Overview:** This document details how Claude was used to design the Yellowtail POC backend, including the actual prompts given, what Claude produced, and which decisions were made by the developer versus proposed by Claude. It reflects the real conversation history — nothing here is illustrative or hypothetical.
+This document is my honest account of how I used Claude (Claude Code, Sonnet 5) to build this
+backend — the actual prompts I gave at each step, why I phrased them the way I did, what the
+model produced before any code existed, where I deliberately kept it out of the loop, and where
+it got things wrong. It's written in the order I think best explains the process, not the order
+I originally asked for it in. The full raw prompt sequence is in
+[PROMPT-LOG.md](PROMPT-LOG.md) as an appendix; this document is the reasoning behind it.
 
-**Session date:** 2026-08-19
-**Tool:** Claude Code (Sonnet 5)
-**Approach:** Architecture-first prompting — requirements and architecture were clarified and decided *before* any implementation, using structured multiple-choice questions to keep every decision explicitly in the developer's hands.
-
-**Status: Phase 1 (Architecture & Requirements Design) — in progress. No implementation has started against the final schema.**
-
----
-
-## Session start: initial scaffold (superseded)
-
-Before the project brief was provided, the developer asked to see the folder structure and then prompted:
-
-**Prompt:**
-```
-Add actual controllers
-```
-
-**What Claude generated:** A `MembersController` with an in-memory repository, a `Member` entity, and a service layer — built against the default `dotnet new webapi` template, before any real requirements existed (no Postgres, no `Role`, no soft-delete, no Cloudinary).
-
-**Status:** Explicitly flagged by Claude as provisional once the real project brief arrived, and confirmed by the developer as needing rework once the actual schema is finalized. This code still sits uncommitted in the working tree and should not be treated as current design.
+I own every line in this repository. Claude wrote most of the code, but every architectural
+decision, every business rule, and every external-system action (Cloudflare account, credentials,
+data cleanup) was mine, and I reviewed everything it produced before it landed.
 
 ---
 
-## Phase 1: Architecture & Requirements Design
+## 1. Tools and models
 
-### Project brief & initial architecture questions
+| Tool | Used for | Used by |
+|---|---|---|
+| Claude Code (Sonnet 5) | All code generation, architecture analysis, test writing, debugging | Me, driving Claude Code interactively in one continuous session |
+| `dotnet` CLI (build/test/`ef migrations`) | Building, testing, generating and applying EF Core migrations | Claude, via its shell tool |
+| Docker / Docker Compose | Local Postgres 16 for development | Claude set it up; I ran Docker Desktop itself |
+| `git` | Status checks before any destructive operation, diff review | Claude (read-only checks); I did the actual `git commit`s myself outside this session |
+| AWS SDK for .NET (`AWSSDK.S3`) | Pre-signed URL generation against Cloudflare R2's S3-compatible API | Claude |
+| Serilog | Structured logging (console + rolling file sinks) | Claude |
+| FluentValidation | Request validation, wired through a custom global action filter | Claude |
+| xUnit, Moq, coverlet | Unit tests and coverage collection | Claude |
+| Azure Data Studio | Browsing the Postgres database visually | Me — Claude has no access to my desktop apps, only screenshots I shared |
+| Cloudflare dashboard | Creating the R2 bucket, enabling the public dev URL, creating the API token | Me — same reason, plus this is a credentialed account Claude shouldn't be acting on |
+| My own terminal | Running `dotnet user-secrets set` for real credentials | Me, deliberately — see §5 |
 
-**Prompt (full project brief, as given):**
-```
-# Yellowtail POC - Sports Club Membership System
-## Project Brief
-- Client: Amsterdam Sports Inc (sports club)
-- System: Membership management (members, sports, multi-tenant)
-- MVP: Members list, single member view, create/edit/delete, sports list
-- Backend only (API-driven)
-- Multi-tenant (multiple branches)
-- No auth required for POC
-- Quality & extensibility critical (client is skeptical)
-
-## Initial Constraints
-- Framework: .NET 8 + ASP.NET Core (TBD: minimal APIs or controllers, TBD: CQRS needed?)
-- Data: PostgreSQL
-- Entities: Member (name, photo), Sport (name), M2M junction table
-- Scale: ~100-500 members/branch initially
-- Photos: Store URL only (front-end/CDN handles upload)
-
-## Your Role in This Conversation
-You are helping me design the backend architecture and implementation strategy BEFORE coding.
-- Provide analysis, not implementation
-- Ask clarifying questions when needed
-- Suggest alternatives with trade-offs
-- Do not generate code until I ask
-
-## Context Preservation
-This message establishes the project context. Reference it in follow-ups:
-- "Given our multi-tenancy model..." (I'll decide this in Phase 1)
-- "Based on our Clean Architecture choice..." (TBD)
-- "For our chosen error handling strategy..." (TBD)
-```
-
-**What Claude did:** Flagged that the just-built controller scaffold predated this brief and would need rework, then asked four clarifying questions before proposing any design:
-1. How should a request identify its branch (tenant), given no auth exists?
-2. Is the Sports catalog global or per-branch?
-3. What project structure fits, given the client's quality/extensibility concern?
-4. Should the application layer use CQRS, or a conventional service layer?
-
-**Developer's answers:**
-1. *"can we skip mutitenecty for later MVP? And focus on other MVPs?"* — multi-tenancy deferred to a later phase.
-2. Global catalog.
-3. Pragmatic N-Tier, extended with a Domain layer.
-4. Conventional service layer (no CQRS/MediatR).
-
-**Kept / changed / discarded:** All four answers locked in as-is. For the deferred multi-tenancy item, Claude proposed a mitigation — keep all data access routed through repositories now, so tenancy can be added later as a filter, not a rewrite — which the developer accepted without change.
+One model, one continuous session, no sub-agents or separate chat threads — everything below
+happened in a single conversation with full history available throughout.
 
 ---
 
-### 1.1 Scope Clarification & Requirements
+## 2. How I kept context across the session
 
-**Prompt (as given):**
-```
-## Phase 1.1: Scope Clarification & Requirements
+This wasn't a short exercise — it ran across a full backend build, a provider pivot, and several
+rounds of refactoring. A few concrete things kept it coherent instead of drifting:
 
-I need to clarify requirements before making architecture decisions.
+**The codebase itself was the source of truth, not memory.** Before editing almost any file that
+had been touched more than a turn or two earlier, Claude re-read it rather than assuming it
+remembered the exact current contents. The tooling actively supported this: any time a file
+changed on disk since Claude last read it — including changes I made directly, outside the chat —
+the next tool call surfaced a note flagging exactly what had changed and instructing Claude to
+treat it as deliberate rather than silently overwrite it. That happened routinely once I started
+poking at files myself.
 
-Please ask me clarifying questions about:
+**Two documents (this one and the prompt log) exist specifically to make decisions checkable
+later**, including by me in this interview. They're not just a deliverable — I used them mid-session
+too, e.g. asking Claude to "list down all our context and plans" partway through Phase 1 as a
+sanity check before moving on.
 
-1. Data Model Questions
-   - Member photos: What's the size limit per photo? File types (JPEG, PNG only)?
-   - Should members have additional attributes (email, phone, age, skill level)?
-   - Can a member have no sports assigned (guest member)? Or must have at least one?
+**A concrete example of context being maintained correctly:** when I later asked for Cloudflare
+R2 image storage, I opened with *"the flow is the same as earlier"* rather than re-explaining the
+requirement from scratch. Claude correctly recognized this meant the same signed-URL,
+backend-never-touches-bytes architecture already agreed for Cloudinary, and only asked about the
+R2-specific delta (bucket, account ID, public URL, credentials) instead of re-litigating the whole
+design.
 
-2. Multi-Tenancy Questions (Can skip since we are planning for later MVP)
-   - Should sports be global or per-tenant?
-   - Can branches see each other's member lists, or strict isolation?
-   - Will a member ever belong to multiple branches?
+**A concrete example of context being tested deliberately, and drift being caught:** when I asked
+to revert the Cloudinary work, I said *"revert all uncommitted changes"* — a broader instruction
+than I actually meant. Claude ran `git status` before touching anything (rather than assuming
+scope) and found that most of the session's work was already committed; the only uncommitted
+changes were the Cloudinary feature and one earlier, unrelated `.http` file deletion. I then
+clarified *"only skip the cloudinary featue"* — Claude had already reasoned through this correctly
+(reverting the Cloudinary code while re-applying the separate `.http` deletion, since that was an
+already-settled decision, not part of "this"), so my clarification confirmed rather than corrected
+its plan. I include this because it's exactly the kind of moment where a less careful process
+would have run a blind `git reset --hard` and either wiped uncommitted work or resurrected a file
+I'd already asked to have removed.
 
-3. Scalability Questions
-   - Expected growth: 100-500 members/branch over 1 year? 1 month?
-   - Number of branches: 5, 50, 500? (Can skip since later MVP)
-   - Report needs: Any analytics? No
-
-4. Extensibility Questions
-   - Will members have roles (admin, coach, member)? Or all equal? (Yes better to consider)
-   - Will sports have attributes (difficulty, max players)? (not yet but needs to cater for extending in the future)
-   - Any future features hinted (training schedules, fees/payments)? (Not yet)
-
-5. API Questions
-   - Should pagination have limits (max 100 members per page)?
-   - Any filtering needs beyond sport name?
-   - Sorting preferences?
-
-6. Security & Admin Questions
-   - Can admins delete members (soft delete or hard delete)? (Soft delete)
-   - Who creates branches/tenants (manual, self-service)? (Currently Manual, Later MVP)
-   - Any audit trail needed? (Yes, but not in this MVP)
-
-Please ask these questions. I'll provide answers, then we move to architecture decisions.
-```
-
-The developer pre-answered several sub-questions inline (no analytics, soft delete, audit trail deferred, branch creation manual). Claude asked the remaining open items across two rounds of four questions each (the question tool caps at four per round).
-
-**Round 1 — data-model-shaping questions:**
-| Question | Answer |
-|---|---|
-| Additional Member attributes beyond name + photo? | Email address, Phone number, Date of birth |
-| Photo URL validation strategy? | Developer asked a clarifying counter-question instead: *"what is the best place to store the photo, yes I will only be storing the url. But where will the actual photo be stored?"* |
-| Can a member have zero sports? | Zero sports allowed |
-| Add a Role field now, or defer? | Add a simple Role field now (Member/Coach/Admin), unenforced |
-
-Claude answered the photo-storage question (explained typical upload patterns: client uploads directly to object storage/CDN, backend only ever receives a URL) and proposed "URL format + must be HTTPS" as the validation rule, pending confirmation.
-
-**Mid-flow interjection — a separate pre-made decision document:**
-```
-Yellowtail POC: Image & File Storage Decision - Cloudinary
-...
-DECISION: Use Cloudinary Free Tier for Image Storage
-[full rationale: cost, multi-tenant folder isolation, CDN, image optimization,
-rejected AWS S3 / local disk / Postgres BLOB / Azure Blob-for-POC]
-```
-Claude incorporated this rather than treating it as a new open question: confirmed HTTPS + well-formed URL validation works cleanly against Cloudinary today and Azure Blob at production (the document's own stated migration path), and deliberately recommended **not** hardcoding a check for Cloudinary's domain for that reason.
-
-**Round 2 — API-behavior questions:**
-| Question | Answer |
-|---|---|
-| Growth timeline to 100-500 members/branch? | Organic growth over the first year |
-| Members-list pagination limits? | Default 20, max 100 |
-| Filters beyond sport? | Active/inactive status, Name search (partial match), Joined-date range |
-| Sorting? | Alphabetical by name (default) |
-
-**Follow-up question** (raised by Claude after noticing the developer's own answers created an ambiguity — soft-delete and the "active/inactive" filter could be the same flag or two different concepts):
-> *"Is 'inactive' the same thing as 'soft-deleted', or a separate membership status?"*
-> **Answer:** Same flag — one `IsActive` bool used for both.
-
-**Kept / changed / discarded:** All answers locked in as the MVP data/API shape. Nothing from this round was later reversed.
+**A moment I want to be transparent about, not just Claude's:** while wiring up Cloudflare R2, I
+ran the `dotnet user-secrets set` commands myself as instructed — but then pasted the terminal
+output, real Access Key ID and Secret Access Key included, into the chat. Claude flagged this
+immediately, explained that the value was now in a transcript outside the intended secure
+boundary, and told me to treat the token as compromised and rotate it — which I did. Nothing
+technical went wrong here (the secret was never used anywhere insecure by Claude), but it's a
+real example of a mistake happening mid-session and being caught and corrected in the same turn.
 
 ---
 
-### 1.2 Technology Stack & Framework Analysis
+## 3. The process, phase by phase
 
-**Prompt (as given):**
-```
-## Phase 1.2: Technology Stack & Framework Selection
+### 3.0 Before the brief existed
 
-Now I need to decide on the framework & architecture approach.
+The very first thing I asked, before giving any real requirements, was to see the folder
+structure, then:
 
-Given the answers above, analyze these options:
+> "Add actual controllers"
 
-Option A: ASP.NET Core + Minimal APIs + Repository Pattern (no CQRS)
-Option B: ASP.NET Core Controllers + Repository + Clean Architecture (no CQRS)
-Option C: ASP.NET Core + Repository + CQRS/MediatR
+Claude built a `MembersController` with an in-memory repository against the default
+`dotnet new webapi` scaffold. I did this on purpose — a quick, low-stakes way to see how Claude
+approaches a totally unscoped request before I'd committed to any real design, not because I
+wanted this code kept. Once I gave the actual project brief, Claude flagged on its own that this
+scaffold predated real requirements and would need rebuilding — it wasn't asked to notice that,
+it noticed because the brief obviously conflicted with what was already there (no Postgres, no
+`Role` field, no soft delete). That code was later deleted entirely and rebuilt from the ground up.
 
-For each option, provide:
-1. Pros for this specific POC
-2. Cons for this specific POC
-3. Folder structure
-4. What this signals to client
-5. Extensibility story
+### 3.1 Architecture and requirements — before any real code
 
-Don't recommend yet. Just analyze the trade-offs.
+This is the phase I was most deliberate about, and it's documented in the most depth because it's
+where the biggest, hardest-to-reverse decisions got made. I gave Claude an explicit role
+constraint up front:
 
-we have decided to go with Ntire arcihitecture and has implemeted the code
-```
+> "You are helping me design the backend architecture and implementation strategy BEFORE coding.
+> Provide analysis, not implementation. Ask clarifying questions when needed. Suggest
+> alternatives with trade-offs. Do not generate code until I ask."
 
-**Important note on sequencing:** This request arrived *after* the developer had already chosen N-Tier + conventional service layer, in the very first architecture-questions round above — and after that scaffold was already running. So this analysis served as a documented, formal justification for a decision already made collaboratively, not as the mechanism that produced the decision. Worth stating plainly: no architectural decision in this project was made by accepting Claude's output uncritically — decisions came first, through direct questions to the developer; write-ups came after, on request.
+**Why I prompted it this way:** I wanted the model to surface the questions and trade-offs I
+hadn't thought of yet, without it jumping straight to an implementation I'd then have to unpick.
+Explicitly forbidding code was the mechanism for that — it forces the model to actually commit to
+reasoning in words I can push back on, instead of hiding assumptions inside code I'd have to
+reverse-engineer to disagree with.
 
-**What Claude generated:** A full trade-off analysis of all three options — pros/cons specific to this POC, folder structure per option, client-perception signal, and extensibility story — without a recommendation, as instructed. Condensed:
+Claude responded not with a design, but with four clarifying questions (tenant routing, whether
+the sports catalog was global or per-branch, project structure, CQRS vs. a plain service layer) —
+exactly matching what I'd asked for. I answered directly, including deferring multi-tenancy
+entirely for a later phase.
 
-| | A: Minimal APIs | B: Controllers (built) | C: CQRS/MediatR |
-|---|---|---|---|
-| Files per operation | Fewest | Moderate | Most |
-| Matches what's already running | No | **Yes** | No |
-| Validation/ProblemDetails "for free" | No | Yes (`[ApiController]`) | Via pipeline behavior |
-| Risk of reading as over-engineered to a pragmatic reviewer | Low | Low | Real |
-| Risk of reading as under-structured to an enterprise reviewer | Some | Low | None |
+I then ran a structured requirements pass, deliberately over-specifying the categories I wanted
+covered and pre-answering some of them inline:
 
-**Kept / changed / discarded:** Option B reconfirmed as the standing choice (already implemented). Option A and C recorded as considered-and-rejected, with reasons on file for a future client question about why they weren't used.
+> "## Phase 1.1: Scope Clarification & Requirements — [data model / multi-tenancy / scalability /
+> extensibility / API / security questions, several pre-answered]"
+
+**Why:** I wanted comprehensive coverage without wasting a round-trip on questions I already knew
+the answer to, and pre-answering forces me to actually think through my own requirements while
+writing the prompt, not just react to the model's questions. What I deliberately left out: I
+never gave file size limits, exact phone/email format rules, or a fixed number of branches —
+those were things I wanted the *model* to ask about, to see whether it would notice gaps I hadn't
+flagged as categories.
+
+Two rounds of targeted questions followed (member fields, photo validation, guest members, roles;
+then growth timeline, pagination, filtering, sorting), plus one Claude raised on its own after
+noticing my own answers created an ambiguity — whether "inactive" and "soft-deleted" were the same
+flag. I hadn't asked that question; it noticed the gap between two of my own answers and asked
+before assuming.
+
+Midway through, I dropped in a separate, already-written decision document for photo storage
+(Cloudinary, with full rationale for rejecting S3/local disk/Postgres BLOB/Azure-for-now). Claude
+folded it into the validation rule already being designed rather than treating it as a new
+open question — and specifically recommended *against* hardcoding a Cloudinary-domain check in
+the URL validator, because my own document named Azure Blob as the intended production migration
+target. That's a case of it connecting two pieces of information I'd given it at different times
+without me having to point out the connection myself.
+
+Next, I asked for a neutral trade-off analysis with an explicit constraint:
+
+> "For each option, provide: 1. Pros... 2. Cons... 3. Folder structure... 4. What this signals to
+> client... 5. Extensibility story... Don't recommend yet. Just analyze the trade-offs.
+>
+> we have decided to go with Ntire arcihitecture and has implemeted the code"
+
+**Why "don't recommend yet":** I wanted the comparison on the record independent of whatever
+Claude's own preference might be, specifically so I could point to it later as an artifact of
+*my* reasoning, not the model's opinion — and notably, by the time I asked this, I'd already made
+and implemented the decision in the earlier round. This prompt wasn't the decision mechanism; it
+was me asking for the formal justification after the fact, which Claude's own summary explicitly
+called out rather than pretending the analysis had driven the choice.
+
+Finally, I asked for a two-model data design comparison (data-level tenant filtering vs.
+schema-per-tenant), again inviting a preference this time. Before answering, Claude flagged that
+my requirement recap ("complete data isolation," a tenancy approach to choose) seemed to reopen
+the multi-tenancy deferral I'd already settled — and asked which I meant, rather than silently
+designing full tenancy as if I'd changed my mind. I confirmed the deferral stood; the two-model
+comparison became a **documented Phase 2 target**, not something built into the MVP.
+
+**What was kept, changed, and discarded from this phase:** N-Tier + conventional service layer +
+Controllers, kept and built. CQRS/MediatR and minimal APIs, analyzed and explicitly rejected.
+Data-level tenant filtering (Model A), kept as the *recorded future design only* — no `BranchId`
+exists anywhere in the MVP schema. Schema-per-tenant (Model B), discarded outright, not just
+deferred, because of a specific failure mode Claude called out: Npgsql connection pooling can
+serve one tenant's schema on a connection still carrying another tenant's `search_path` — an
+intermittent, hard-to-catch bug class, worse than anything Model A risks.
+
+### 3.2 Building the real API
+
+Once the design was settled:
+
+> "now can we start buildig as per our plan? where should we start?"
+
+**Why so open-ended:** at this point I genuinely wanted to see whether Claude's proposed build
+order matched sound engineering judgment — data layer first, then a real database, then services,
+then the API surface, then a manual smoke test, then automated tests — before committing to it. If
+it had proposed starting somewhere I disagreed with (say, the API layer before the schema
+existed), that would have told me something about how much I needed to steer the rest of the
+build. It didn't; the order matched what I'd have chosen myself.
+
+Claude checked for a local Postgres, found none reachable, and asked me directly how I wanted to
+run one rather than guessing (Docker Compose, Homebrew, or an existing instance) — I chose Docker
+Compose. From there it built the `Member`/`Sport`/`MemberSport` entities, `YellowtailDbContext`
+with a soft-delete query filter, the EF Core migration, the repository and service layers, and the
+controllers — then actually ran the API against the real database and exercised every endpoint
+with `curl` before calling any of it done, rather than just asserting the build succeeded. Port
+5432 turned out to be occupied first by Postgres.app, then (after I moved to 5433 and later asked
+to move back) by a native system PostgreSQL 17 `launchd` service — Claude found this by actually
+inspecting running processes, not guessing, and gave me the exact `sudo launchctl` command to run
+myself rather than running a privileged command on my machine on its own.
+
+### 3.3 Iterating on the API surface
+
+A few rounds here were me deliberately pushing back on my own earlier design once I could see it
+running as real code:
+
+> "is thi sthe best way to handle filterrs? what if in the future the amount od codtions increse?
+> Can I have a geneic way to do it? I my company project I used query options a string wgich
+> thenresloved"
+
+**Why I framed it this way, mentioning my own company's pattern:** I wanted to see whether Claude
+would just agree with a pattern I'd used before because I'd cited it as precedent, or actually
+reason about whether it fit *this* codebase. It didn't just agree — it explained the trade-off
+(a generic string-filter loses compile-time type safety and Swagger documentation fidelity) and
+proposed a narrower fix that solved my actual complaint (the controller signature growing) without
+adopting the heavier pattern. I asked it to explain the proposal in more depth before approving it.
+
+Similarly, I pasted my own controller code with manually-injected `IValidator<T>` instances and
+asked directly whether it was correct and whether it would clutter the controller as more actions
+were added. Claude confirmed the concern was valid and proposed a global `IAsyncActionFilter`
+instead — a single cross-cutting mechanism, consistent with how I'd already decided to keep
+concerns centralized rather than scattered. I approved and it was built and verified against real
+requests (valid/invalid payloads, actions with no registered validator).
+
+### 3.4 Cleaning up as the codebase grew
+
+> "Can we clean up the program.cs class and move service regustery to an extesion methoda as well
+> call db context and what others you suggest?"
+
+**Why I left "what others you suggest" open:** by this point `Program.cs` had several unrelated
+concerns tangled together, and I wanted to see if Claude would notice the *other* half of the
+mess (the middleware pipeline) without me having to spell it out. It did, and proposed splitting
+both the service registration and the middleware pipeline into extension methods matching the
+project's own three-layer structure — which is what got built, verified with a full build, test
+run, and live request smoke test afterward.
+
+I also asked a direct factual question rather than accepting an earlier explanation at face
+value:
+
+> "Is this required builder.Services.AddProblemDetails();"
+
+**Why:** Claude had explained a few turns earlier why this line existed, and I wanted to know if
+that explanation actually held up, not just re-hear it. Claude chose to test it empirically —
+commented the line out, ran the app, and it crashed at startup — rather than restate its earlier
+reasoning. That earlier reasoning turned out to be *incomplete*: I cover the actual gap in §5.
+
+### 3.5 Testing
+
+> "Now lets add unit tests. try to achive most code coverage"
+
+Claude scoped this deliberately rather than chasing 100% blindly: full coverage on `Services` and
+`API` (business logic, controllers, validators, filters — the things worth testing with mocks),
+and explicitly flagged that the `Data` layer (EF Core repositories, `DbContext` query filters,
+Postgres-specific `ILike` usage) can't be meaningfully unit tested without a real database, and
+would need Testcontainers-based integration tests as a separate, later decision rather than
+something to fold in silently. I agreed with leaving that as a flagged gap rather than writing
+hollow mocked tests against it. Ended at 61 tests (later 66, after the duplicate-validation work),
+98.5% line / 100% branch coverage on the in-scope layers.
+
+### 3.6 Image storage: Cloudinary, then a full pivot to Cloudflare R2
+
+> "Okay now lets add Image stogae endpoins uinsg Cloudinary. what all things we should do. let us
+> first ideate"
+
+**Why "let us first ideate" instead of just asking for the endpoint:** I already knew from Phase
+1 that Cloudinary was the chosen provider, but *how* the backend should integrate with it was a
+real open question with meaningfully different implementations (backend never touches the file
+vs. backend proxies the upload). I wanted to see the design space laid out before picking one, not
+have Claude quietly pick the simpler option for me. It correctly identified the central fork
+(signed-URL vs. backend-proxy) and asked me to choose rather than assuming.
+
+I chose the signed-URL approach; Claude built the full `PhotosController` + `PhotoUploadService`
+flow, User Secrets for the API credentials, and a manual test script, and verified the endpoint's
+wiring (it correctly rejected requests with no credentials configured, with a clean error rather
+than a crash).
+
+I later asked to switch providers to Cloudflare R2, and separately, to revert the Cloudinary work
+entirely and drop it (see the git-revert example in §2). **Why the pivot happened at all:** this
+wasn't Claude getting anything wrong — Cloudinary worked as designed. It was a real business
+decision on my end to use R2 instead, and I anchored the new request to the already-agreed
+architecture (see §2) rather than re-explaining it. Claude rebuilt the same shape against R2's
+S3-compatible API (`AWSSDK.S3`, presigned PUT URLs), and this time I actually walked through
+creating the real Cloudflare bucket, public URL, and API token myself (Claude gave me the exact
+steps, since it has no access to my Cloudflare account), and we verified a real end-to-end upload
+— a real image, uploaded through the real presigned URL, confirmed publicly readable, then used
+as a real member's `photoUrl` through the actual API. Cloudinary was never verified with a live
+upload in the same way, since I pivoted before providing real credentials for it — worth being
+precise about, since it's a meaningful difference in how thoroughly each was actually proven out.
+
+### 3.7 Architecture review, without asking for any code
+
+Two prompts in this session asked for nothing to be built at all — just my own reasoning tested
+against real production patterns I'd used elsewhere:
+
+> "why is the YellowtailDbContext is a calss and why does it nit have an iterface?"
+
+> "In My PRODUCTIONCODE [pasted a full envelope-response pattern: `ApiResponseDto<T>`,
+> `ResponseCode` enum, always-200 responses] THIS IS HOW ALL API IS STRUCTURED... WILL IT BE GOOD
+> TO ADOSPT YHIS?"
+
+**Why I asked these as open questions rather than instructions:** both are cases where I had a
+real alternative in hand (a pattern from my own production experience) and wanted to know if
+Claude would just defer to precedent because I'd presented it as "how we do it," or actually push
+back if it didn't fit. It pushed back on both — explained why the repository interfaces are
+already the correct abstraction boundary (an interface on `DbContext` itself would be redundant
+given nothing else touches it directly), and why the always-200 envelope pattern actively fights
+standard HTTP tooling and would mean throwing away the `ProblemDetails`/status-code system already
+built and tested. I didn't adopt either production pattern into this codebase.
+
+The same thing happened once more, later, when I shared a custom base-exception class
+(`R2QException`, with a `ResponseCode` enum and message-parameters dictionary) while asking for
+validation on member email/phone. Claude again recommended against introducing it, on consistency
+grounds with the earlier envelope-pattern decision, and pointed out the existing
+`ValidationFailedException` already covered the actual need without a new type.
+
+### 3.8 Later feature and structure changes
+
+A handful of smaller, more surgical prompts rounded out the build:
+
+- *"Is it a nice touch to group contrcts in API to differn folders baswdn on controller"* → I
+  asked this as a genuine question first; once Claude flagged the one real wrinkle (`SportResponse`
+  is shared across two controllers, not owned by one), I confirmed the split with *"Yes.. keep
+  shared un touched group rest"* and it was executed exactly that way.
+- *"Remove joined from a and joineef to filters"* → a straightforward removal, executed cleanly
+  across all five layers the field touched (API contract, controller, service model, service, data
+  query, repository), with the two affected tests updated in the same pass.
+- Duplicate email/phone validation, requested alongside the exception-class question above — I
+  used the multiple-choice tool to pin down exactly which validation I meant (format vs.
+  uniqueness), chose duplicate-rejection for both fields, and Claude flagged on its own that
+  enforcing it only on create (not update) would leave a real loophole, then implemented it on
+  both. Before applying the resulting database migration, it checked the actual dev data first and
+  found existing duplicates — including some from my own manual testing, not just its own — and
+  asked how I wanted to handle them rather than silently picking rows to delete. I chose to clean
+  it up myself.
+- *"can you add lld for all servcie methods??"*, clarified to a specific `#region LLD` /
+  `// step 1:` format I described exactly → built precisely to that format across every method in
+  the three service classes, including converting one expression-bodied method to a block body
+  so the region would actually fit inside it. This is a case where the requested style cuts
+  against Claude's own default (minimal comments, no restating "what" code does) — I said so
+  explicitly, and it followed the instruction exactly as given rather than pushing back or
+  watering it down.
 
 ---
 
-### 1.3 Data Model & Multi-Tenancy Strategy
+## 4. Where I did not use AI, and why
 
-**Prompt (as given):**
-```
-## Phase 1.3: Data Model & Multi-Tenancy Strategy
+Almost all of the *code* in this repository was written by Claude — I want to be upfront about
+that rather than overstate a hands-on-keyboard split that isn't real. What I kept for myself:
 
-Based on our requirements, design two data models:
+- **Every architectural and business decision.** Multi-tenancy deferral, global vs. per-branch
+  sports, the single `IsActive` flag doing double duty, pagination defaults, the Cloudinary → R2
+  pivot, the duplicate email/phone business rule, and rejecting both the envelope-response pattern
+  and the generic-exception pattern from my own production code — all mine. Claude proposed
+  options and trade-offs; I picked.
+- **All external account setup.** Creating the Cloudflare account resources (R2 bucket, public
+  development URL, API token) happened in my own browser session — Claude has no access to that
+  account and said so plainly rather than pretending otherwise.
+- **Handling real credentials.** Every `dotnet user-secrets set` command with a real value was run
+  by me, in my own terminal, on purpose — this was a boundary I set deliberately (and, per §2, one
+  I briefly broke myself by pasting output back into chat, caught immediately).
+  Claude never had a real secret typed into it by me as an instruction to use directly.
+- **Deciding what to do with duplicate test data** before applying the unique-index migration —
+  Claude flagged the collision and could have picked a resolution itself, but since some of that
+  data was mine, not just leftover from its own testing, I chose to clean it up myself rather than
+  let it guess which rows mattered.
+- **Rotating the leaked API token** in the Cloudflare dashboard, after Claude flagged it.
 
-### Requirement Recap
-- Members belong to one branch (tenant)
-- Sports are global (shared across branches)
-- Members can play multiple sports
-- Each branch has complete data isolation
-- Multi-tenancy approach: [DATA-LEVEL FILTERING / SCHEMA-LEVEL / YOUR PREFERENCE]
+## 5. Where Claude got it wrong
 
-### Model A: Data-Level Filtering (Single DB, Tenant-Aware Queries)
-[entity definitions, tenant filtering, leakage safeguards, photo storage]
+**The clearest concrete mistake:** when I asked for entry/exit-style logging (§3, testing/logging
+work not detailed above but present in the codebase), Claude added `LogWarning` calls immediately
+before several `throw new NotFoundException(...)` / `throw new ValidationFailedException(...)`
+statements in `MemberService`. I asked directly: *"do I need both?"* — and the honest answer was
+no. ASP.NET Core's built-in `ExceptionHandlerMiddleware` already logs every exception it catches
+at `Error` level, unconditionally, before Claude's own `GlobalExceptionHandler` even runs. So every
+one of those code paths was already being logged once by the framework; Claude's new lines made it
+twice, with near-identical text, and at the *wrong* relative severity to boot (a 404 isn't really
+an `Error`). I asked to strip the redundant lines back out rather than suppress the framework's
+logging, and that's what happened — the fix was small, but the root cause (not checking what was
+already logging the same event before adding a new log call) was a real gap in that turn's
+reasoning.
 
-### Model B: Schema-Level Isolation (One Schema Per Tenant)
-[entity definitions, tenant routing, migration strategy, photo storage]
+**A related, smaller instance of an incomplete mental model:** when I asked directly whether
+`builder.Services.AddProblemDetails()` was actually required, Claude's honest answer — before
+testing — would likely have understated its role; instead of asserting, it removed the line, ran
+the app, and watched it fail at startup with a clear error naming the actual reason (a hard
+dependency inside `UseExceptionHandler()` when no fallback path or `ProblemDetails` service is
+configured, independent of whether the custom handler happens to catch everything at runtime).
+The original explanation for why that line existed hadn't been wrong exactly, but it was
+incomplete — I only found that out because I asked a pointed enough question to make verifying it
+worthwhile, and Claude verified instead of just restating itself with more confidence.
 
-For each model: relationship cardinality, failure modes, SQL pseudocode or EF Core fluent API.
-Don't generate entity code yet. Just schema design.
-```
-
-**What Claude did before answering:** Flagged that this prompt's requirement recap ("complete data isolation," a concrete tenancy approach to choose) appeared to reopen the multi-tenancy deferral decided earlier, rather than silently designing it as if that decision had changed. Asked the developer directly which was intended: build tenancy now, or document it as the Phase 2 plan while the MVP ships single-tenant.
-
-**What Claude generated (after that flag):** A full comparison of Model A (data-level filtering via EF Core global query filters, with concrete leakage safeguards — never trust `BranchId` from a request body, a marker-interface convention so new entities can't silently skip scoping) versus Model B (schema-per-tenant, with its migration-replay cost and a specific called-out failure mode: Npgsql connection pooling can serve one tenant's schema on a connection still carrying another tenant's `search_path`, an intermittent bug class much harder to catch than Model A's static, review-catchable failure modes). Since the prompt invited "YOUR PREFERENCE," Claude gave a light-touch recommendation for Model A, with reasoning (Model B still needs a shared-schema exception for the global `Sport` table anyway, so it doesn't even deliver the "complete isolation" the requirement recap asked for).
-
-**Developer's answer:** *"yes.. please go with the planned MVP"* — confirming the original deferral stands. Model A adopted as the **documented Phase 2 target design only**; the MVP itself remains single-tenant with no `BranchId` column.
-
-**Kept / changed / discarded:** Model A's mechanism (query filter + marker-interface convention) kept as the recorded future design. Model B discarded outright — not just for this MVP, but as a live candidate at all, given the connection-pooling risk. Actual tenancy implementation itself deferred, per the original decision.
+I don't have a case in this project where Claude produced code that shipped with a real, unnoticed
+functional bug — the closest calls are the two above, both caught within the same turn they came
+up in, and both caught because I asked a direct question rather than accepting output at face
+value. I think that says more about the value of asking pointed questions mid-build than about the
+model rarely being wrong.
 
 ---
 
-## Where Claude Pushed Back Rather Than Complying Silently
+## Appendix
 
-1. **Provisional scaffold** — flagged the very first `MembersController` (built before the project brief existed) as due for rework rather than presenting it as finished work once real requirements arrived.
-2. **Scope-reopening in 1.3** — noticed the Phase 1.3 prompt's requirement recap conflicted with the earlier multi-tenancy deferral and asked which was intended, instead of assuming the deferral had been reversed.
-3. **Photo URL validation** — recommended against a Cloudinary-specific validation rule (e.g. checking the `res.cloudinary.com` domain) specifically because the developer's own Cloudinary decision document named Azure Blob as the intended production migration target — a narrower, provider-agnostic rule serves both.
-
-## Decision Ownership
-
-Every architectural and data-model decision in this document was made by the developer, via direct multiple-choice questions or explicit written confirmation. Claude's role was consistently: propose options with named trade-offs, flag inconsistencies or risks when they appeared, and never proceed past an open decision without an explicit answer. No code has been accepted or rejected yet, because none has been generated against the final schema — that review will populate a "Where Claude got it wrong" section once Phase 2 begins.
-
-## Not Yet Reached
-
-Phase 2 (entity classes & `DbContext`), Phase 3 (API endpoints against the real schema), Phase 4 (error-handling middleware), Phase 5 (tests) have not started. The only controller/repository code in the repository is the pre-requirements scaffold noted at the top of this document, which is expected to be replaced, not extended, once implementation begins.
-
-## Tools & Model
-
-- **Claude Code (Sonnet 5)** — single continuous session, full conversation context maintained across every decision recorded above.
-
----
-
-## Summary
-
-| Phase | Claude's Contribution | Developer's Contribution | Outcome |
-|---|---|---|---|
-| Initial scaffold | Generated a provisional controller before requirements existed | Requested it, then supplied the real brief that superseded it | Flagged for rework, not deleted |
-| Architecture kickoff | Asked 4 targeted questions instead of assuming defaults | Decided: defer tenancy, global sports, N-Tier, service layer | Architecture direction set |
-| 1.1 Scope Clarification | 8 targeted questions across 2 rounds + 1 follow-up on a self-identified ambiguity | Answered all; supplied an independent Cloudinary decision doc mid-flow | Full data/API shape defined |
-| 1.2 Stack Analysis | Neutral A/B/C trade-off write-up, no recommendation (as instructed) | Confirmed already-implemented Option B, documented for the record | Formal justification on file |
-| 1.3 Multi-Tenancy Strategy | Flagged a scope inconsistency before answering; delivered Model A/B comparison with failure modes | Confirmed original deferral stands; adopted Model A as Phase 2 target only | Tenancy design documented, not built |
-
-**Status:** Architecture and requirements are fully decided for the MVP. No implementation has begun against this design.
+The full sequence of prompts, in order, with brief notes on what each led to, is in
+[PROMPT-LOG.md](PROMPT-LOG.md).
