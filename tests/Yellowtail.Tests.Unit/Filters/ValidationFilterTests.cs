@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
-using Yellowtail.API.Contracts;
+using Yellowtail.API.Contracts.Members;
 using Yellowtail.API.Filters;
 using Yellowtail.API.Validators;
 

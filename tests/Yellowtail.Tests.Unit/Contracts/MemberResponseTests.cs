@@ -1,4 +1,4 @@
-using Yellowtail.API.Contracts;
+using Yellowtail.API.Contracts.Members;
 using Yellowtail.Data.Entities;
 using Yellowtail.Data.Enums;
 

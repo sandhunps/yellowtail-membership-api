@@ -1,7 +1,8 @@
+using Yellowtail.API.Contracts;
 using Yellowtail.Data.Entities;
 using Yellowtail.Data.Enums;
 
-namespace Yellowtail.API.Contracts;
+namespace Yellowtail.API.Contracts.Members;
 
 /// <summary>
 /// Represents a member in API responses.

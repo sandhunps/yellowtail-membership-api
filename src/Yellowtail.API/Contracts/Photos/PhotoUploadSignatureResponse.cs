@@ -1,6 +1,6 @@
 using Yellowtail.Services.Models;
 
-namespace Yellowtail.API.Contracts;
+namespace Yellowtail.API.Contracts.Photos;
 
 /// <summary>
 /// Represents a pre-signed URL a client uses to upload one image directly to R2, without

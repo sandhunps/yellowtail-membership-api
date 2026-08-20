@@ -20,9 +20,9 @@ public static class ApplicationServiceCollectionExtensions
     {
         services.AddScoped<IMemberService, MemberService>();
         services.AddScoped<ISportService, SportService>();
+        services.AddScoped<IPhotoUploadService, PhotoUploadService>();
 
         services.Configure<R2Options>(configuration.GetSection(R2Options.SectionName));
-        services.AddScoped<IPhotoUploadService, PhotoUploadService>();
 
         return services;
     }

@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using Yellowtail.API.Contracts;
+using Yellowtail.API.Contracts.Photos;
 using Yellowtail.Services.Contracts;
 
 namespace Yellowtail.API.Controllers;

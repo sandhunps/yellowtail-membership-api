@@ -1,5 +1,5 @@
 using FluentValidation;
-using Yellowtail.API.Contracts;
+using Yellowtail.API.Contracts.Members;
 
 namespace Yellowtail.API.Validators;
 

@@ -1,4 +1,4 @@
-using Yellowtail.API.Contracts;
+using Yellowtail.API.Contracts.Members;
 using Yellowtail.API.Validators;
 
 namespace Yellowtail.Tests.Unit.Validators;

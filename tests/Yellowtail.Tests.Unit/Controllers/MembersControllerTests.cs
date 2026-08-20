@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Moq;
 using Yellowtail.API.Configuration;
-using Yellowtail.API.Contracts;
+using Yellowtail.API.Contracts.Members;
 using Yellowtail.API.Controllers;
 using Yellowtail.Data.Entities;
 using Yellowtail.Data.Enums;

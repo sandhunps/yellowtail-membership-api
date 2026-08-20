@@ -1,4 +1,4 @@
-namespace Yellowtail.API.Contracts;
+namespace Yellowtail.API.Contracts.Members;
 
 /// <summary>
 /// Represents a paginated list of members.

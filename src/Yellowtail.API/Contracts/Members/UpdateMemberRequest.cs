@@ -1,11 +1,11 @@
 using Yellowtail.Data.Enums;
 
-namespace Yellowtail.API.Contracts;
+namespace Yellowtail.API.Contracts.Members;
 
 /// <summary>
-/// Represents a request to create a new member.
+/// Represents a request to update an existing member.
 /// </summary>
-public class CreateMemberRequest
+public class UpdateMemberRequest
 {
     /// <summary>
     /// The member's first name.
@@ -38,9 +38,14 @@ public class CreateMemberRequest
     public string? PhotoUrl { get; set; }
 
     /// <summary>
-    /// The member's role. Defaults to the standard member role if not specified.
+    /// The member's role.
     /// </summary>
-    public MemberRole? Role { get; set; }
+    public MemberRole Role { get; set; }
+
+    /// <summary>
+    /// Whether the member is currently active.
+    /// </summary>
+    public bool IsActive { get; set; }
 
     /// <summary>
     /// The identifiers of the sports to associate with the member.

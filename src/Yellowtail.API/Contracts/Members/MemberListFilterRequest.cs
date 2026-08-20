@@ -1,4 +1,4 @@
-namespace Yellowtail.API.Contracts;
+namespace Yellowtail.API.Contracts.Members;
 
 /// <summary>
 /// Represents the filter and pagination criteria for a members list request, bound from the

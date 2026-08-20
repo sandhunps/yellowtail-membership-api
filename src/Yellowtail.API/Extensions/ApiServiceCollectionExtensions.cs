@@ -1,6 +1,6 @@
 using FluentValidation;
 using Yellowtail.API.Configuration;
-using Yellowtail.API.Contracts;
+using Yellowtail.API.Contracts.Members;
 using Yellowtail.API.Filters;
 using Yellowtail.API.Middleware;
 

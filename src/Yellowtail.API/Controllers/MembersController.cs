@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Yellowtail.API.Configuration;
-using Yellowtail.API.Contracts;
+using Yellowtail.API.Contracts.Members;
 using Yellowtail.Data.Enums;
 using Yellowtail.Services.Contracts;
 using Yellowtail.Services.Models;

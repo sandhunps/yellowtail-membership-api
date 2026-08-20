@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Moq;
-using Yellowtail.API.Contracts;
+using Yellowtail.API.Contracts.Photos;
 using Yellowtail.API.Controllers;
 using Yellowtail.Services.Contracts;
 using Yellowtail.Services.Models;
